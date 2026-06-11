@@ -1,0 +1,20 @@
+# 金鑰不進版控
+.env
+
+# 下載快取的段位素材
+.asset_cache/
+
+# 開發時產生的暫存圖
+_*.png
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 編輯器
+.vscode/
+.idea/
+
+README.md
