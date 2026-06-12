@@ -7,11 +7,13 @@ from dotenv import load_dotenv
 
 from services.henrik_api import HenrikAPI
 from utils.assets import AssetManager
+from utils.settings import GuildSettings
 
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 HENRIK_API_KEY = os.getenv("HENRIK_API_KEY")
+GUILD_ID = os.getenv("GUILD_ID")
 
 intents = discord.Intents.default()
 
@@ -20,11 +22,20 @@ class ValorantBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
         self.henrik_api = HenrikAPI(HENRIK_API_KEY)
         self.assets = AssetManager()
+        self.settings = GuildSettings()
 
     async def setup_hook(self):
         await self.load_extension("cogs.rank")
-        synced = await self.tree.sync()
-        print(f"已同步 {len(synced)} 個 slash command")
+        await self.load_extension("cogs.stats")
+        await self.load_extension("cogs.region")
+        if GUILD_ID:
+            guild = discord.Object(id=int(GUILD_ID))
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+            print(f"已同步 {len(synced)} 個指令到伺服器 {GUILD_ID}（即時生效）")
+        else:
+            synced = await self.tree.sync()
+            print(f"已同步 {len(synced)} 個全域 slash command（最久約 1 小時生效）")
 
     async def on_ready(self):
         print(f"已登入：{self.user}（id={self.user.id}）")

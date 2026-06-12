@@ -7,6 +7,7 @@ from PIL import Image
 
 META_TIERS_URL = "https://valorant-api.com/v1/competitivetiers"
 META_SEASONS_URL = "https://valorant-api.com/v1/seasons/competitive"
+MAPS_URL = "https://valorant-api.com/v1/maps?language=zh-TW"
 
 CACHE_DIR = ".asset_cache"
 
@@ -15,6 +16,7 @@ class AssetManager:
         self._session: aiohttp.ClientSession | None = None
         self._img_cache: dict[str, Image.Image] = {}
         self._meta = None
+        self._map_names = None
         os.makedirs(CACHE_DIR, exist_ok=True)
 
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -56,6 +58,28 @@ class AssetManager:
             img = Image.open(io.BytesIO(raw)).convert("RGBA")
         self._img_cache[url] = img
         return img
+
+    async def get_map_names(self) -> dict:
+        if self._map_names is not None:
+            return self._map_names
+        try:
+            data = await self._get_json(MAPS_URL, "maps_zhtw.json")
+            self._map_names = {
+                m["uuid"]: m.get("displayName", "")
+                for m in data.get("data", []) if m.get("uuid")
+            }
+        except Exception:
+            self._map_names = {}
+        return self._map_names
+
+    async def get_agent_icon(self, agent_id: str):
+        if not agent_id:
+            return None
+        url = f"https://media.valorant-api.com/agents/{agent_id}/displayicon.png"
+        try:
+            return await self._get_image(url)
+        except Exception:
+            return None
 
     async def _load_meta(self) -> dict:
         if self._meta is not None:

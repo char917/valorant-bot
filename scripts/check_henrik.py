@@ -13,7 +13,7 @@ from utils.pyramid import extract_win_tiers
 
 load_dotenv()
 
-USAGE = "用法：python scripts/check_henrik.py 名稱#Tag [區域]\n例如：python scripts/check_henrik.py Charlie#0917 ap"
+USAGE = "用法：python scripts/check_henrik.py 名稱#Tag [伺服器]\n例如：python scripts/check_henrik.py Charlie#0917 ap"
 REGIONS = ["ap", "na", "eu", "kr", "latam", "br"]
 BASE = "https://api.henrikdev.xyz"
 
@@ -26,7 +26,7 @@ def parse_args():
     name, tag = args[0].rsplit("#", 1)
     region = args[1] if len(args) > 1 else "ap"
     if region not in REGIONS:
-        print(f"區域要是這些之一：{', '.join(REGIONS)}")
+        print(f"伺服器要是這些之一：{', '.join(REGIONS)}")
         sys.exit(1)
     return name.strip(), tag.strip(), region
 

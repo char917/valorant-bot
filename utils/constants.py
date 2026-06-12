@@ -34,10 +34,35 @@ TIER_ID_BASE = {
     27: "Radiant",
 }
 
+TIER_NAME_ZH = {
+    "Iron": "鐵牌",
+    "Bronze": "銅牌",
+    "Silver": "銀牌",
+    "Gold": "金牌",
+    "Platinum": "白金",
+    "Diamond": "鑽石",
+    "Ascendant": "超凡入聖",
+    "Immortal": "神話",
+    "Radiant": "輻能戰魂",
+}
+
+
 def get_tier_base(tier_name: str) -> str:
     if not tier_name:
         return "Unrated"
     return tier_name.split(" ")[0]
+
+
+def localize_tier(tier_name: str) -> str:
+    base = get_tier_base(tier_name)
+    if base == "Unrated":
+        return "未定級"
+    zh = TIER_NAME_ZH.get(base)
+    if zh is None:
+        return tier_name
+    parts = tier_name.split(" ", 1)
+    div = parts[1] if len(parts) > 1 else ""
+    return f"{zh} {div}".strip()
 
 def get_tier_color(tier_name: str) -> str:
     return TIER_COLORS.get(get_tier_base(tier_name), TIER_COLORS["Unrated"])

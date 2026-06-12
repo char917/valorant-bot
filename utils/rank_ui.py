@@ -4,13 +4,7 @@ import re
 
 import discord
 
-from services.henrik_api import HenrikAPI, HenrikAPIError
-from utils.constants import (
-    REGIONS,
-    REGION_LABELS,
-    get_tier_color,
-    hex_to_int,
-)
+from utils.constants import get_tier_color, hex_to_int, localize_tier
 from utils.pyramid import render_pyramid, extract_win_tiers
 
 
@@ -68,17 +62,20 @@ def seasons_from_data(data: dict) -> list[tuple[str, dict]]:
 
 
 def build_overview_embed(name: str, tag: str, data: dict) -> discord.Embed:
-    current_tier = dig(data, "current_data", "currenttierpatched", default="未定級")
+    current_tier = dig(data, "current_data", "currenttierpatched", default="")
     rr = dig(data, "current_data", "ranking_in_tier", default=0)
-    peak_tier = dig(data, "highest_rank", "patched_tier", default="無紀錄")
-    peak_season = dig(data, "highest_rank", "season", default="—")
+    peak_tier = dig(data, "highest_rank", "patched_tier", default="")
+    peak_season = dig(data, "highest_rank", "season", default="")
 
     embed = discord.Embed(
-        title=f"{name}#{tag} 的段位",
+        title=f"{name}#{tag}",
         color=hex_to_int(get_tier_color(current_tier)),
     )
-    embed.add_field(name="目前段位", value=f"**{current_tier}** ・ {rr} RR", inline=False)
-    embed.add_field(name="歷史最高", value=f"**{peak_tier}**（{peak_season}）", inline=False)
+    embed.add_field(name="目前段位", value=f"**{localize_tier(current_tier)}** ・ {rr} RR", inline=False)
+    peak_value = f"**{localize_tier(peak_tier)}**"
+    if peak_season:
+        peak_value += f"（{format_season_label(peak_season)}）"
+    embed.add_field(name="歷史最高", value=peak_value, inline=False)
 
     badge = dig(data, "current_data", "images", "small") or dig(data, "current_data", "images", "large")
     if badge:
@@ -86,7 +83,7 @@ def build_overview_embed(name: str, tag: str, data: dict) -> discord.Embed:
 
     seasons = seasons_from_data(data)
     if seasons:
-        embed.set_footer(text=f"共 {len(seasons)} 個賽季紀錄 ・ 用下方選單切換")
+        embed.set_footer(text=f"共 {len(seasons)} 個賽季紀錄 ・ 用下方選單切換各賽季")
     else:
         embed.set_footer(text="查無賽季紀錄")
     return embed
@@ -104,7 +101,7 @@ def build_season_embed(name: str, tag: str, short: str, season: dict, index: int
         title=f"{name}#{tag} ・ {format_season_label(short)}",
         color=hex_to_int(get_tier_color(end_tier)),
     )
-    embed.add_field(name="結算段位", value=f"**{end_tier}**", inline=False)
+    embed.add_field(name="結算段位", value=f"**{localize_tier(end_tier)}**", inline=False)
     embed.add_field(name="場數", value=f"{games} 場", inline=True)
     embed.add_field(name="勝 / 敗", value=f"{wins} / {losses}", inline=True)
     embed.add_field(name="勝率", value=winrate_text, inline=True)
@@ -133,7 +130,7 @@ async def build_season_page(name: str, tag: str, short: str, season: dict, index
 
 class SeasonView(discord.ui.View):
     def __init__(self, author_id: int, name: str, tag: str, data: dict, assets=None):
-        super().__init__(timeout=180)
+        super().__init__(timeout=600)
         self.author_id = author_id
         self.name = name
         self.tag = tag
@@ -172,8 +169,7 @@ class SeasonView(discord.ui.View):
             self.add_item(select)
 
         home = discord.ui.Button(
-            label="總覽",
-            emoji="🏠",
+            label="生涯總覽",
             style=discord.ButtonStyle.primary,
             disabled=(self.index is None),
         )
@@ -202,42 +198,3 @@ class SeasonView(discord.ui.View):
         embed, file = await self._current_page()
         attachments = [file] if file else []
         await interaction.edit_original_response(embed=embed, view=self, attachments=attachments)
-
-
-class RegionSelect(discord.ui.Select):
-    def __init__(self, api: HenrikAPI, author_id: int, name: str, tag: str, assets=None):
-        self.api = api
-        self.author_id = author_id
-        self.name = name
-        self.tag = tag
-        self.assets = assets
-        options = [
-            discord.SelectOption(label=REGION_LABELS[r], value=r) for r in REGIONS
-        ]
-        super().__init__(placeholder="選擇你的區域…", options=options, min_values=1, max_values=1)
-
-    async def callback(self, interaction: discord.Interaction):
-        region = self.values[0]
-        await interaction.response.defer()
-        try:
-            data = await self.api.get_mmr(region, self.name, self.tag)
-        except HenrikAPIError as e:
-            await interaction.edit_original_response(content=f"⚠️ {e.message}", view=None)
-            return
-
-        view = SeasonView(self.author_id, self.name, self.tag, data, self.assets)
-        embed = build_overview_embed(self.name, self.tag, data)
-        await interaction.edit_original_response(content=None, embed=embed, view=view)
-
-
-class RegionSelectView(discord.ui.View):
-    def __init__(self, api: HenrikAPI, author_id: int, name: str, tag: str, assets=None):
-        super().__init__(timeout=120)
-        self.author_id = author_id
-        self.add_item(RegionSelect(api, author_id, name, tag, assets))
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.author_id:
-            await interaction.response.send_message("這不是你發起的查詢喔。", ephemeral=True)
-            return False
-        return True
