@@ -74,6 +74,11 @@ valorant-bot/
     └── tutorial/
 ```
 
+## 致謝
+
+- [Henrik Dev API](https://docs.henrikdev.xyz/) — 段位與對戰資料來源
+- [Valorant-API.com](https://valorant-api.com/) — 皮膚名稱、圖片與賽季素材
+
 ## 備註
 
 - 商店登入使用 Riot ssid cookie，約一個月過期
