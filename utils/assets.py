@@ -8,6 +8,8 @@ from PIL import Image
 META_TIERS_URL = "https://valorant-api.com/v1/competitivetiers"
 META_SEASONS_URL = "https://valorant-api.com/v1/seasons/competitive"
 MAPS_URL = "https://valorant-api.com/v1/maps?language=zh-TW"
+SKINS_URL = "https://valorant-api.com/v1/weapons/skins?language=zh-TW"
+CONTENT_TIERS_URL = "https://valorant-api.com/v1/contenttiers"
 
 CACHE_DIR = ".asset_cache"
 
@@ -17,6 +19,8 @@ class AssetManager:
         self._img_cache: dict[str, Image.Image] = {}
         self._meta = None
         self._map_names = None
+        self._skins = None
+        self._tier_colors = None
         os.makedirs(CACHE_DIR, exist_ok=True)
 
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -71,6 +75,58 @@ class AssetManager:
         except Exception:
             self._map_names = {}
         return self._map_names
+
+    async def get_skin_offers(self, level_ids: list[str]) -> list[dict]:
+        skins = await self._load_skins()
+        colors = await self._load_tier_colors()
+        result = []
+        for lid in level_ids:
+            skin = skins.get(lid)
+            if not skin:
+                result.append({"name": "未知皮膚", "image": None, "color": None})
+                continue
+            result.append({
+                "name": skin["name"],
+                "image": skin["image"],
+                "color": colors.get(skin["tier"]),
+            })
+        return result
+
+    async def _load_skins(self) -> dict:
+        if self._skins is not None:
+            return self._skins
+        try:
+            data = await self._get_json(SKINS_URL, "skins_zhtw.json")
+            mapping = {}
+            for s in data.get("data", []):
+                name = s.get("displayName", "")
+                image = s.get("displayIcon")
+                tier = s.get("contentTierUuid")
+                for lvl in s.get("levels") or []:
+                    uuid = lvl.get("uuid")
+                    if uuid:
+                        mapping[uuid] = {
+                            "name": name,
+                            "image": image or lvl.get("displayIcon"),
+                            "tier": tier,
+                        }
+            self._skins = mapping
+        except Exception:
+            self._skins = {}
+        return self._skins
+
+    async def _load_tier_colors(self) -> dict:
+        if self._tier_colors is not None:
+            return self._tier_colors
+        try:
+            data = await self._get_json(CONTENT_TIERS_URL, "content_tiers.json")
+            self._tier_colors = {
+                t["uuid"]: t.get("highlightColor", "")[:6]
+                for t in data.get("data", []) if t.get("uuid")
+            }
+        except Exception:
+            self._tier_colors = {}
+        return self._tier_colors
 
     async def get_agent_icon(self, agent_id: str):
         if not agent_id:

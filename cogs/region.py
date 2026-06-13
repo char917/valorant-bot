@@ -16,17 +16,17 @@ class Region(commands.Cog):
     @app_commands.checks.has_permissions(manage_guild=True)
     async def setregion(self, interaction: discord.Interaction, region: app_commands.Choice[str]):
         if interaction.guild_id is None:
-            await interaction.response.send_message("這個指令只能在伺服器裡使用。", ephemeral=True)
+            await interaction.response.send_message("此指令僅限在伺服器中使用。", ephemeral=True)
             return
         self.bot.settings.set_region(interaction.guild_id, region.value)
         await interaction.response.send_message(
-            f"已將本伺服器的預設查詢區設為 **{region.name}**。"
+            f"預設查詢區域已設為 **{region.name}**。"
         )
 
     @setregion.error
     async def setregion_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.MissingPermissions):
-            msg = "只有伺服器管理員可以更改預設查詢區。"
+            msg = "此指令僅限伺服器管理員使用。"
         else:
             msg = "設定失敗，請稍後再試。"
         if interaction.response.is_done():

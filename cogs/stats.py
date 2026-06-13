@@ -14,24 +14,34 @@ class Stats(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="stats", description="近 15 場競技統計（KDA / 暴頭率 / ACS / RR）")
-    @app_commands.describe(riot_id="RiotID，格式：名稱#Tag，例如 Charlie#1234")
-    async def stats(self, interaction: discord.Interaction, riot_id: str):
-        parsed = parse_riot_id(riot_id)
-        if parsed is None:
-            await interaction.response.send_message(
-                "RiotID 格式錯誤，正確格式為：`名稱#Tag`，例如 `Charlie#1234`。",
-                ephemeral=True,
-            )
-            return
+    @app_commands.describe(riot_id="RiotID，格式：名稱#Tag（不填則查詢你綁定的帳號）")
+    async def stats(self, interaction: discord.Interaction, riot_id: str = None):
+        if riot_id is None:
+            binding = self.bot.db.get_binding(interaction.user.id)
+            if binding is None:
+                await interaction.response.send_message(
+                    "未輸入 RiotID，請先使用 `/bind` 綁定帳號。",
+                    ephemeral=True,
+                )
+                return
+            name, tag = binding
+        else:
+            parsed = parse_riot_id(riot_id)
+            if parsed is None:
+                await interaction.response.send_message(
+                    "RiotID 格式不正確，請使用 `名稱#Tag` 格式。",
+                    ephemeral=True,
+                )
+                return
+            name, tag = parsed
 
-        name, tag = parsed
         region = self.bot.settings.get_region(interaction.guild_id)
         await interaction.response.defer()
         try:
             matches = await self.bot.henrik_api.get_lifetime_matches(region, name, tag, size=15)
             history = await self.bot.henrik_api.get_mmr_history(region, name, tag)
         except HenrikAPIError as e:
-            await interaction.followup.send(f"⚠️ {e.message}")
+            await interaction.followup.send(e.message)
             return
 
         if not matches:

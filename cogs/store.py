@@ -1,0 +1,214 @@
+import json
+import time
+import os
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+from services.riot_auth import RiotAuthError
+from services.riot_store import get_storefront, RiotStoreError
+from utils.store_ui import build_store_embeds
+from utils import crypto
+
+
+class CookieModal(discord.ui.Modal, title="輸入 Riot Cookie 登入"):
+    ssid = discord.ui.TextInput(
+        label="ssid cookie 的值",
+        placeholder="貼上從瀏覽器複製的 ssid 值（很長一串字串）",
+        style=discord.TextStyle.paragraph,
+        max_length=2000,
+    )
+
+    def __init__(self, cog):
+        super().__init__()
+        self.cog = cog
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await self.cog.handle_cookie_login(interaction, str(self.ssid).strip())
+
+
+class LoginPromptView(discord.ui.View):
+    def __init__(self, cog):
+        super().__init__(timeout=3600)
+        self.cog = cog
+
+    @discord.ui.button(label="重新登入", style=discord.ButtonStyle.primary)
+    async def login(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(CookieModal(self.cog))
+
+
+class Store(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @app_commands.command(name="tutorial", description="取得商店登入教學（傳送到你的私訊）")
+    async def tutorial(self, interaction: discord.Interaction):
+        steps = [
+            (
+                "步驟 1 ・ 開啟瀏覽器開發者工具",
+                "前往 **playvalorant.com** 確認已登入 Riot 帳號。\n按 **F12** 開啟開發者工具，點上方的「**Application**」頁籤，再點左側「**Cookies**」展開。",
+            ),
+            (
+                "步驟 2 ・ 找到並複製 ssid",
+                "點左側的 **`https://auth.riotgames.com`**，在右側列表找到 **`ssid`** 那行並點選。\n下方「Cookie Value」會顯示完整的值，點進去全選（**Ctrl+A**）再複製（**Ctrl+C**）。\n\nssid 是你的登入憑證，請勿截圖分享或傳給任何人。",
+            ),
+            (
+                "步驟 3 ・ 在 Discord 輸入 /login",
+                "回到 Discord，在任意頻道輸入 **`/login`** 並選擇指令。",
+            ),
+            (
+                "步驟 4 ・ 貼上 ssid",
+                "跳出表單後，將剛才複製的 ssid 值貼入欄位，按「**提交**」。",
+            ),
+            (
+                "步驟 5 ・ 完成",
+                "Bot 回覆「登入成功！」代表設定完成。\n之後直接用 **`/store`** 就能查詢每日商店，ssid 約一個月才會過期，到期時重複以上步驟即可。",
+            ),
+        ]
+
+        tutorial_dir = os.path.join("assets", "tutorial")
+        files = []
+        embeds = []
+
+        for i, (title, desc) in enumerate(steps, start=1):
+            filename = f"step{i}.png"
+            path = os.path.join(tutorial_dir, filename)
+            embed = discord.Embed(title=title, description=desc, color=0xFF4654)
+            if os.path.exists(path):
+                files.append(discord.File(path, filename=filename))
+                embed.set_image(url=f"attachment://{filename}")
+            embeds.append(embed)
+
+        embeds[0].set_author(name="Valorant 商店登入教學")
+
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.user.send(embeds=embeds, files=files)
+            await interaction.followup.send("登入教學已傳送至私訊。", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "無法傳送私訊，請至隱私設定開啟「允許伺服器成員傳送私訊」。",
+                ephemeral=True,
+            )
+
+    @app_commands.command(name="login", description="用 Riot Cookie 登入以查詢每日商店（不需要輸入帳號密碼）")
+    async def login(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(CookieModal(self))
+
+    @app_commands.command(name="logout", description="登出並刪除儲存的登入資料")
+    async def logout(self, interaction: discord.Interaction):
+        removed = self.bot.db.delete_auth(interaction.user.id)
+        msg = "登入資料已清除。" if removed else "尚未登入。"
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    async def handle_cookie_login(self, interaction: discord.Interaction, ssid: str):
+        await interaction.response.defer(ephemeral=True)
+
+        if not ssid:
+            await interaction.followup.send("ssid 欄位不得為空。", ephemeral=True)
+            return
+
+        session = self.bot.riot_auth.new_session()
+        try:
+            access_token, id_token = await self.bot.riot_auth.reauth(session, {"ssid": ssid})
+        except Exception:
+            await session.close()
+            await interaction.followup.send("連線失敗，請稍後再試。", ephemeral=True)
+            return
+
+        if not access_token:
+            await session.close()
+            await interaction.followup.send(
+                "ssid 無效或已過期，請重新取得並輸入。", ephemeral=True
+            )
+            return
+
+        try:
+            await self.bot.riot_auth.get_entitlements(session, access_token)
+        except RiotAuthError as e:
+            await session.close()
+            await interaction.followup.send(e.message, ephemeral=True)
+            return
+
+        region = None
+        if id_token:
+            region = await self.bot.riot_auth.get_region(session, access_token, id_token)
+        if not region:
+            region = self.bot.settings.get_region(interaction.guild_id)
+
+        cookies = self.bot.riot_auth.dump_cookies(session)
+        await session.close()
+
+        cookies_enc = crypto.encrypt(json.dumps(cookies))
+        self.bot.db.set_auth(interaction.user.id, cookies_enc, region, int(time.time()))
+        await interaction.followup.send("登入成功，可使用 `/store` 查詢每日商店。", ephemeral=True)
+
+    @app_commands.command(name="store", description="查詢你今日的 Valorant 商店")
+    async def store(self, interaction: discord.Interaction):
+        auth = self.bot.db.get_auth(interaction.user.id)
+        if auth is None:
+            await self._prompt_login(interaction, "你還沒登入。")
+            return
+
+        cookies_enc, region, _ = auth
+        cookies_raw = crypto.decrypt(cookies_enc)
+        if cookies_raw is None:
+            await self._prompt_login(interaction, "登入資料無法解密，請重新登入。")
+            return
+
+        await interaction.response.defer()
+        session = self.bot.riot_auth.new_session()
+        try:
+            cookies = json.loads(cookies_raw)
+            access_token, id_token = await self.bot.riot_auth.reauth(session, cookies)
+            if not access_token:
+                await session.close()
+                await self._prompt_login(interaction, "登入已過期，請重新登入。", followup=True)
+                return
+
+            ent_token = await self.bot.riot_auth.get_entitlements(session, access_token)
+            puuid = self.bot.riot_auth.puuid_from_token(access_token)
+            store = await get_storefront(session, region, puuid, access_token, ent_token)
+
+            new_cookies = self.bot.riot_auth.dump_cookies(session)
+            if new_cookies:
+                cookies_enc = crypto.encrypt(json.dumps(new_cookies))
+                self.bot.db.set_auth(interaction.user.id, cookies_enc, region, int(time.time()))
+
+        except (RiotAuthError, RiotStoreError) as e:
+            await session.close()
+            await interaction.followup.send(e.message)
+            return
+        except Exception:
+            await session.close()
+            await interaction.followup.send("查詢商店時發生錯誤，請稍後再試。")
+            return
+        await session.close()
+
+        level_ids = [it["level_id"] for it in store["items"]]
+        costs = [it["cost"] for it in store["items"]]
+        offers = await self.bot.assets.get_skin_offers(level_ids)
+
+        binding = self.bot.db.get_binding(interaction.user.id)
+        name, tag = binding if binding else (interaction.user.display_name, "")
+        embeds = build_store_embeds(name, tag, offers, costs, store["remaining"])
+        await interaction.followup.send(embeds=embeds)
+
+    async def _prompt_login(self, interaction: discord.Interaction, reason: str, followup: bool = False):
+        text = f"{reason} 請使用 `/login` 登入。"
+        if followup:
+            await interaction.followup.send(text, ephemeral=True)
+        else:
+            await interaction.response.send_message(text, ephemeral=True)
+        try:
+            await interaction.user.send(
+                "商店登入憑證已失效，請重新登入：",
+                view=LoginPromptView(self),
+            )
+        except discord.Forbidden:
+            pass
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Store(bot))
