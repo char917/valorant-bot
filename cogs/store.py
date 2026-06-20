@@ -81,6 +81,14 @@ class Store(commands.Cog):
         msg = "登入資料已清除。" if removed else "尚未登入。"
         await interaction.response.send_message(msg, ephemeral=True)
 
+    @app_commands.command(name="help", description="取得商店登入教學")
+    async def help(self, interaction: discord.Interaction):
+        await self._send_login_tutorial(
+            interaction,
+            success_text="商店登入教學已傳送至私訊。",
+            forbidden_text="請先到隱私設定開啟「允許伺服器成員傳送私訊」後再重試。",
+        )
+
     async def handle_cookie_login(self, interaction: discord.Interaction, ssid: str):
         await interaction.response.defer(ephemeral=True)
 
@@ -188,7 +196,13 @@ class Store(commands.Cog):
             embeds = build_store_embeds(name, tag, offers, costs, store["remaining"])
             await interaction.followup.send(embeds=embeds)
 
-    async def _prompt_login(self, interaction: discord.Interaction, reason: str, followup: bool = False):
+    async def _send_login_tutorial(
+        self,
+        interaction: discord.Interaction,
+        success_text: str,
+        forbidden_text: str,
+        followup: bool = False,
+    ):
         tutorial_dir = os.path.join("assets", "tutorial")
         files = []
         embeds = []
@@ -204,14 +218,22 @@ class Store(commands.Cog):
 
         try:
             await interaction.user.send(embeds=embeds, files=files, view=LoginPromptView(self))
-            text = f"{reason} 登入教學已傳送至私訊。"
+            text = success_text
         except discord.Forbidden:
-            text = f"{reason} 請先到隱私設定開啟「允許伺服器成員傳送私訊」後再重試。"
+            text = forbidden_text
 
         if followup:
             await interaction.followup.send(text, ephemeral=True)
         else:
             await interaction.response.send_message(text, ephemeral=True)
+
+    async def _prompt_login(self, interaction: discord.Interaction, reason: str, followup: bool = False):
+        await self._send_login_tutorial(
+            interaction,
+            success_text=f"{reason} 登入教學已傳送至私訊。",
+            forbidden_text=f"{reason} 請先到隱私設定開啟「允許伺服器成員傳送私訊」後再重試。",
+            followup=followup,
+        )
 
 
 async def setup(bot: commands.Bot):
