@@ -20,19 +20,29 @@ def format_remaining(seconds: int) -> str:
     return f"{h} 小時 {m} 分"
 
 
-def build_store_embeds(name: str, tag: str, offers: list[dict], costs: list, remaining: int) -> list[discord.Embed]:
+def build_store_embeds(
+    name: str,
+    tag: str,
+    offers: list[dict],
+    costs: list,
+    remaining: int,
+    image_filenames: list[str | None] | None = None,
+) -> list[discord.Embed]:
     tag_str = f"#{tag}" if tag else ""
     header = discord.Embed(description=f"**{name}{tag_str} 的每日商店**  |  {format_remaining(remaining)}後刷新")
 
     embeds = [header]
-    for offer, cost in zip(offers, costs):
+    image_filenames = image_filenames or [None] * len(offers)
+    for offer, cost, image_filename in zip(offers, costs, image_filenames):
         price = f"{VP_EMOJI} {cost} VP" if cost is not None else "—"
         embed = discord.Embed(
             title=offer["name"],
             description=price,
             color=_color(offer.get("color")),
         )
-        if offer.get("image"):
+        if image_filename:
+            embed.set_image(url=f"attachment://{image_filename}")
+        elif offer.get("image"):
             embed.set_thumbnail(url=offer["image"])
         embeds.append(embed)
 

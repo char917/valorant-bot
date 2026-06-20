@@ -22,7 +22,6 @@ Valorant Discord Bot，支援查詢段位、近期戰績與每日商店。
 | `/store` | 查詢今日個人商店 |
 | `/login` | 用 Riot Cookie 登入商店 |
 | `/logout` | 登出並清除登入資料 |
-| `/tutorial` | 取得商店登入教學（傳送私訊）|
 
 ## 環境變數
 
@@ -69,6 +68,7 @@ valorant-bot/
 │   ├── settings.py
 │   ├── stats_card.py
 │   ├── stats_ui.py
+│   ├── store_card.py
 │   └── store_ui.py
 └── assets/
     └── tutorial/

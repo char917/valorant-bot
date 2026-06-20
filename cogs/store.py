@@ -1,6 +1,7 @@
 import json
 import time
 import os
+import io
 
 import discord
 from discord import app_commands
@@ -8,6 +9,7 @@ from discord.ext import commands
 
 from services.riot_auth import RiotAuthError
 from services.riot_store import get_storefront, RiotStoreError
+from utils.store_card import render_store_weapon_images
 from utils.store_ui import build_store_embeds
 from utils import crypto
 
@@ -169,8 +171,22 @@ class Store(commands.Cog):
 
         binding = self.bot.db.get_binding(interaction.user.id)
         name, tag = binding if binding else (interaction.user.display_name, "")
-        embeds = build_store_embeds(name, tag, offers, costs, store["remaining"])
-        await interaction.followup.send(embeds=embeds)
+        try:
+            images = await render_store_weapon_images(offers, self.bot.assets)
+            files = []
+            image_filenames = []
+            for i, png in enumerate(images):
+                if png is None:
+                    image_filenames.append(None)
+                    continue
+                filename = f"store_weapon_{i}.png"
+                files.append(discord.File(io.BytesIO(png), filename=filename))
+                image_filenames.append(filename)
+            embeds = build_store_embeds(name, tag, offers, costs, store["remaining"], image_filenames)
+            await interaction.followup.send(embeds=embeds, files=files)
+        except Exception:
+            embeds = build_store_embeds(name, tag, offers, costs, store["remaining"])
+            await interaction.followup.send(embeds=embeds)
 
     async def _prompt_login(self, interaction: discord.Interaction, reason: str, followup: bool = False):
         tutorial_dir = os.path.join("assets", "tutorial")
