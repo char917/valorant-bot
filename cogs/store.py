@@ -173,16 +173,10 @@ class Store(commands.Cog):
         await interaction.followup.send(embeds=embeds)
 
     async def _prompt_login(self, interaction: discord.Interaction, reason: str, followup: bool = False):
-        text = f"{reason} 教學已傳送至私訊。"
-        if followup:
-            await interaction.followup.send(text, ephemeral=True)
-        else:
-            await interaction.response.send_message(text, ephemeral=True)
-
         tutorial_dir = os.path.join("assets", "tutorial")
         files = []
         embeds = []
-        for i, (title, desc) in enumerate(TUTORIAL_STEPS, start=0):
+        for i, (title, desc) in enumerate(TUTORIAL_STEPS):
             filename = f"step{i}.png"
             path = os.path.join(tutorial_dir, filename)
             embed = discord.Embed(title=title, description=desc, color=0xFF4654)
@@ -194,8 +188,14 @@ class Store(commands.Cog):
 
         try:
             await interaction.user.send(embeds=embeds, files=files, view=LoginPromptView(self))
+            text = f"{reason} 登入教學已傳送至私訊。"
         except discord.Forbidden:
-            pass
+            text = f"{reason} 請先到隱私設定開啟「允許伺服器成員傳送私訊」後再重試。"
+
+        if followup:
+            await interaction.followup.send(text, ephemeral=True)
+        else:
+            await interaction.response.send_message(text, ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
