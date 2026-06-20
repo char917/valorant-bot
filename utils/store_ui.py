@@ -33,7 +33,7 @@ def build_store_embeds(name: str, tag: str, offers: list[dict], costs: list, rem
             color=_color(offer.get("color")),
         )
         if offer.get("image"):
-            embed.set_image(url=offer["image"])
+            embed.set_thumbnail(url=offer["image"])
         embeds.append(embed)
 
     return embeds

@@ -11,6 +11,33 @@ from services.riot_store import get_storefront, RiotStoreError
 from utils.store_ui import build_store_embeds
 from utils import crypto
 
+TUTORIAL_STEPS = [
+    (
+        "步驟 1 ・ 登入 Riot 帳號",
+        "前往 **playvalorant.com** 登入你的 Riot 帳號。\n登入時請記得勾選「**保持登入狀態**」，否則 ssid 可能提早失效。",
+    ),
+    (
+        "步驟 2 ・ 開啟瀏覽器開發者工具",
+        "按 **F12** 開啟開發者工具，點上方的「**Application**」頁籤，再點左側「**Cookies**」展開。",
+    ),
+    (
+        "步驟 3 ・ 找到並複製 ssid",
+        "點左側的 **`https://auth.riotgames.com`**，在右側列表找到 **`ssid`** 那行並點選。\n下方「Cookie Value」會顯示完整的值，點進去全選（**Ctrl+A**）再複製（**Ctrl+C**）。\n\nssid 是你的登入憑證，請勿截圖分享或傳給任何人。",
+    ),
+    (
+        "步驟 4 ・ 在 Discord 輸入 /login",
+        "回到 Discord，在任意頻道輸入 **`/login`** 並選擇指令。",
+    ),
+    (
+        "步驟 5 ・ 貼上 ssid",
+        "跳出表單後，將剛才複製的 ssid 值貼入欄位，按「**提交**」。",
+    ),
+    (
+        "步驟 6 ・ 完成",
+        "Bot 回覆「登入成功！」代表設定完成。\n之後直接用 **`/store`** 就能查詢每日商店，ssid 約一個月才會過期，到期時重複以上步驟即可。",
+    ),
+]
+
 
 class CookieModal(discord.ui.Modal, title="輸入 Riot Cookie 登入"):
     ssid = discord.ui.TextInput(
@@ -33,7 +60,7 @@ class LoginPromptView(discord.ui.View):
         super().__init__(timeout=3600)
         self.cog = cog
 
-    @discord.ui.button(label="重新登入", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="登入", style=discord.ButtonStyle.primary)
     async def login(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(CookieModal(self.cog))
 
@@ -41,56 +68,6 @@ class LoginPromptView(discord.ui.View):
 class Store(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-
-    @app_commands.command(name="tutorial", description="取得商店登入教學（傳送到你的私訊）")
-    async def tutorial(self, interaction: discord.Interaction):
-        steps = [
-            (
-                "步驟 1 ・ 開啟瀏覽器開發者工具",
-                "前往 **playvalorant.com** 確認已登入 Riot 帳號。\n按 **F12** 開啟開發者工具，點上方的「**Application**」頁籤，再點左側「**Cookies**」展開。",
-            ),
-            (
-                "步驟 2 ・ 找到並複製 ssid",
-                "點左側的 **`https://auth.riotgames.com`**，在右側列表找到 **`ssid`** 那行並點選。\n下方「Cookie Value」會顯示完整的值，點進去全選（**Ctrl+A**）再複製（**Ctrl+C**）。\n\nssid 是你的登入憑證，請勿截圖分享或傳給任何人。",
-            ),
-            (
-                "步驟 3 ・ 在 Discord 輸入 /login",
-                "回到 Discord，在任意頻道輸入 **`/login`** 並選擇指令。",
-            ),
-            (
-                "步驟 4 ・ 貼上 ssid",
-                "跳出表單後，將剛才複製的 ssid 值貼入欄位，按「**提交**」。",
-            ),
-            (
-                "步驟 5 ・ 完成",
-                "Bot 回覆「登入成功！」代表設定完成。\n之後直接用 **`/store`** 就能查詢每日商店，ssid 約一個月才會過期，到期時重複以上步驟即可。",
-            ),
-        ]
-
-        tutorial_dir = os.path.join("assets", "tutorial")
-        files = []
-        embeds = []
-
-        for i, (title, desc) in enumerate(steps, start=1):
-            filename = f"step{i}.png"
-            path = os.path.join(tutorial_dir, filename)
-            embed = discord.Embed(title=title, description=desc, color=0xFF4654)
-            if os.path.exists(path):
-                files.append(discord.File(path, filename=filename))
-                embed.set_image(url=f"attachment://{filename}")
-            embeds.append(embed)
-
-        embeds[0].set_author(name="Valorant 商店登入教學")
-
-        await interaction.response.defer(ephemeral=True)
-        try:
-            await interaction.user.send(embeds=embeds, files=files)
-            await interaction.followup.send("登入教學已傳送至私訊。", ephemeral=True)
-        except discord.Forbidden:
-            await interaction.followup.send(
-                "無法傳送私訊，請至隱私設定開啟「允許伺服器成員傳送私訊」。",
-                ephemeral=True,
-            )
 
     @app_commands.command(name="login", description="用 Riot Cookie 登入以查詢每日商店（不需要輸入帳號密碼）")
     async def login(self, interaction: discord.Interaction):
@@ -148,7 +125,7 @@ class Store(commands.Cog):
     async def store(self, interaction: discord.Interaction):
         auth = self.bot.db.get_auth(interaction.user.id)
         if auth is None:
-            await self._prompt_login(interaction, "你還沒登入。")
+            await self._prompt_login(interaction, "使用 `/store` 前需要先登入。")
             return
 
         cookies_enc, region, _ = auth
@@ -196,16 +173,27 @@ class Store(commands.Cog):
         await interaction.followup.send(embeds=embeds)
 
     async def _prompt_login(self, interaction: discord.Interaction, reason: str, followup: bool = False):
-        text = f"{reason} 請使用 `/login` 登入。"
+        text = f"{reason} 教學已傳送至私訊。"
         if followup:
             await interaction.followup.send(text, ephemeral=True)
         else:
             await interaction.response.send_message(text, ephemeral=True)
+
+        tutorial_dir = os.path.join("assets", "tutorial")
+        files = []
+        embeds = []
+        for i, (title, desc) in enumerate(TUTORIAL_STEPS, start=0):
+            filename = f"step{i}.png"
+            path = os.path.join(tutorial_dir, filename)
+            embed = discord.Embed(title=title, description=desc, color=0xFF4654)
+            if os.path.exists(path):
+                files.append(discord.File(path, filename=filename))
+                embed.set_image(url=f"attachment://{filename}")
+            embeds.append(embed)
+        embeds[0].set_author(name="Valorant 商店登入教學")
+
         try:
-            await interaction.user.send(
-                "商店登入憑證已失效，請重新登入：",
-                view=LoginPromptView(self),
-            )
+            await interaction.user.send(embeds=embeds, files=files, view=LoginPromptView(self))
         except discord.Forbidden:
             pass
 
